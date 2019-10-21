@@ -79,17 +79,27 @@ class SqueezeBoxController:
 
   cached_player = None
   
-  def __init__(self, server_ip, server_port=9000, playername_cleanup_func=None, default_player = None, request_lib=requests):
+  def __init__(self, server_ip, server_port=None, server_protocol='http', playername_cleanup_func=None, default_player = None, username=None, password=None, request_lib=requests):
     """
     Args:
       server_ip: ``string``,
       server_port: ``int``,
+      server_protocol: ``string``,
       playername_cleanup_func: ``(string) -> string``
         for tidying up the player names got from the squeeze server
     """
-    self.base_url = "http://" + server_ip + ":" + str(server_port)
+    if server_port is None:
+        if server_protocol == 'https':
+            server_port = 443
+        else:
+            server_port = 9000
+    self.base_url = server_protocol + '://' + server_ip + ':' + str(server_port)
+    self.login_url = self.base_url + '/user/login'
     self.end_point_url = self.base_url + "/jsonrpc.js"
     self.request_lib = request_lib
+    self.cookies = request_lib.cookies.RequestsCookieJar()
+    if username is not None and password is not None:
+      self.cookies = self._make_login_request(username, password)
     self.player_macs = self._populate_player_macs(playername_cleanup_func)
     self._custom_commands = {}
     self.cached_player = default_player
@@ -359,8 +369,9 @@ class SqueezeBoxController:
 
   def _populate_player_macs(self, playername_cleanup=None):
     player_macs = {}
-    count = int(self._make_request('-', ["player","count", "?"])['result']['_count'])
-    for player in self._make_request('-', ["players","0", count])['result']['players_loop']:
+    server_status = self._get_server_status()
+    count = server_status['player count']
+    for player in server_status['players_loop']:
       name = player['name']
       assert not name == "ALL"
       if playername_cleanup != None:
@@ -368,14 +379,38 @@ class SqueezeBoxController:
       player_macs[name] = player['playerid']
     player_macs["ALL"] = list(player_macs.values())
     return player_macs
-      
+
+  def _get_server_status(self):
+    return self._make_request("", ["serverstatus", 0, 999])["result"]
+
   def _get_player_info(self, player):
     return self._make_request(player, ["status","-"])["result"]
-    
+
+  def _make_login_request(self, email, password):
+    """
+    Sends a login request, usually to mysqueezebox.com
+    and returns the authentication cookies that should
+    be included in all future requests
+    """
+    form_data = {
+      'email': email,
+      'password': password
+    }
+    headers = {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+
+    req = self.request_lib.post(self.login_url, params=form_data, headers=headers)
+    # mysqueezebox.com sets a cookie with name 'sdi_squeezenetwork_session'
+    # when authentication is successful
+    if not len(req.cookies):
+      raise Exception("Authentication failed, no cookie returned, cookies:\n"+str(req.cookies))
+    return req.cookies
+
   def _make_request(self, player, command):
     def handler(p):
       payload = {'method': 'slim.request', 'params': [p, command]}
-      req = self.request_lib.post(self.end_point_url, json=payload)
+      req = self.request_lib.post(self.end_point_url, json=payload, cookies=self.cookies)
       return json.loads(req.content.decode("utf-8"))
 
     if type(player) == list:

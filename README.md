@@ -4,7 +4,7 @@
 [![Build Status](https://travis-ci.com/samtherussell/squeezebox-controller.svg?branch=master)](https://travis-ci.com/samtherussell/squeezebox-controller)
 
 
-A python 3 interface for controlling logitech squeezeboxes via the squeezebox server.
+A python 3 interface for controlling logitech squeezeboxes via the squeezebox server or mysqueezebox.com.
 
 The commands are sent over the JSON RPC interface to the local squeeze server.
 
@@ -27,6 +27,26 @@ params = {
 }
 controller.simple_command(params)
 ```
+
+## Controlling via mysqueezebox.com
+
+A username & password need to be provided.
+
+Usage:
+`̀``python
+from squeezebox_controller import SqueezeBoxController
+
+controller = SqueezeBoxController("mysqueezebox.com",
+                                  server_protocol="https",
+                                  username="<my_username>",
+                                  password="<my_password>")
+params = {
+  "player": "Lounge",
+  "command": "PLAY"
+}
+controller.simple_command(params)
+```
+
 
 ## Parameter options:
 
